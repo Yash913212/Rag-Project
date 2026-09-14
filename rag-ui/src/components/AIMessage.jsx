@@ -109,9 +109,11 @@ export default function AIMessage({ content, sources, timestamp, isStreaming, is
             </div>
           ) : (
             <div className="text-[14px] leading-7 text-text-secondary">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} className="markdown-body">
-                {content}
-              </ReactMarkdown>
+              <div className="markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {content}
+                </ReactMarkdown>
+              </div>
               {isStreaming && <span className="inline-block w-1.5 h-4 bg-accent-primary ml-0.5 align-text-bottom animate-type-cursor" />}
             </div>
           )}

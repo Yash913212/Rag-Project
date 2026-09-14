@@ -300,12 +300,20 @@ export function useRAG() {
     setIsProcessing(false);
   }, [abortGeneration]);
 
-  const startNewChat = useCallback(() => {
+  const startNewChat = useCallback(async () => {
     abortGeneration();
+    flushPersist();
     setMessages([]);
     setCurrentSessionId(nextId().toString());
     setIsProcessing(false);
-  }, [abortGeneration]);
+    setFiles([]);
+    setVectorCount(0);
+    try {
+      await fetch(`${BACKEND_URL}/clear`, { method: 'POST' });
+    } catch (e) {
+      console.error("Failed to clear backend", e);
+    }
+  }, [abortGeneration, flushPersist]);
 
   const loadSession = useCallback((id) => {
     abortGeneration();

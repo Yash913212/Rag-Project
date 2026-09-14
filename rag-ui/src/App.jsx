@@ -48,9 +48,8 @@ export default function App() {
 
       {/* Sidebar - Collapsible on Mobile */}
       <div
-        className={`fixed inset-y-0 left-0 z-30 transform transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:relative md:translate-x-0 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed inset-y-0 left-0 z-30 transform transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
       >
         <Sidebar
           files={files}

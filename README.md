@@ -16,7 +16,7 @@ This project is a Retrieval-Augmented Generation (RAG) system that uses local LL
 - [Ollama](https://ollama.ai/) installed locally
 - Required Ollama models pulled:
   ```bash
-  ollama pull llama3.2:1b
+  ollama pull llama3.2:3b
   ollama pull nomic-embed-text
   ```
 

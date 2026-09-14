@@ -93,7 +93,9 @@ export default function DropZone({ onUpload, isUploading, progress }) {
                   transition={{ ease: "easeOut" }}
                 />
               </div>
-              <p className="text-[10px] text-text-muted font-mono tracking-label uppercase">{progress}% Processing</p>
+              <p className="text-[10px] text-text-muted font-mono tracking-label uppercase">
+                {progress < 30 ? 'Uploading' : progress < 60 ? 'Chunking' : progress < 95 ? 'Embedding' : 'Finalizing'} · {progress}%
+              </p>
             </motion.div>
           ) : (
             <motion.div

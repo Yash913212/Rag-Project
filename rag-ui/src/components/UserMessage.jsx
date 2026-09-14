@@ -21,7 +21,7 @@ export default function UserMessage({ content, timestamp }) {
       </div>
 
       <motion.div
-        className="relative max-w-[85%] rounded-2xl rounded-br-md px-4 py-3 bg-gradient-to-br from-accent-primary to-accent-glow text-surface-0 shadow-glow"
+        className="relative w-fit max-w-[85%] rounded-2xl rounded-br-md px-4 py-3 bg-gradient-to-br from-accent-primary to-accent-glow text-surface-0 shadow-glow"
         initial={{ opacity: 0, y: 8, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: "spring", stiffness: 500, damping: 30 }}

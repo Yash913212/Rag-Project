@@ -31,6 +31,7 @@ export default function Button({
   className = '',
   title,
   whileTap = { scale: 0.97 },
+  whileHover,
   ...rest
 }) {
   const classes = [baseClasses, sizes[size], variants[variant], className].join(' ');
@@ -41,7 +42,7 @@ export default function Button({
       disabled={disabled}
       title={title}
       whileTap={disabled ? undefined : whileTap}
-      whileHover={disabled ? undefined : { scale: 1.02 }}
+      whileHover={disabled ? undefined : whileHover}
       {...rest}
     >
       {children}

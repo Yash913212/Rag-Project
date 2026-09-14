@@ -10,7 +10,7 @@ const SIZES = {
 };
 
 const InteractiveHoverButton = forwardRef(function InteractiveHoverButton(
-  { text = 'Button', size = 'md', fullWidth = false, variant = 'primary', className, ...props },
+  { text = 'Button', size = 'md', fullWidth = false, variant = 'primary', arrow = false, className, ...props },
   ref,
 ) {
   const isPrimary = variant === 'primary';
@@ -34,12 +34,14 @@ const InteractiveHoverButton = forwardRef(function InteractiveHoverButton(
     >
       <span className="relative z-10 flex items-center gap-2">
         <span>{text}</span>
-        <ArrowRight
-          className={cn(
-            'h-4 w-4 shrink-0 transition-transform duration-300',
-            isPrimary ? 'opacity-90 group-hover:translate-x-0.5' : 'text-accent-primary group-hover:translate-x-0.5',
-          )}
-        />
+        {arrow && (
+          <ArrowRight
+            className={cn(
+              'h-4 w-4 shrink-0 transition-transform duration-300',
+              isPrimary ? 'opacity-90 group-hover:translate-x-0.5' : 'text-accent-primary group-hover:translate-x-0.5',
+            )}
+          />
+        )}
       </span>
       {isPrimary && (
         <span

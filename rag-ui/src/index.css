@@ -1,25 +1,27 @@
 @import "tailwindcss";
+
 @layer base {
-     :root {
+    :root {
         color-scheme: dark;
-        --surface-0: #0b1115;
-        --surface-1: #111a20;
-        --surface-2: #18242b;
-        --surface-3: #22323a;
-        --surface-4: #2d4149;
-        --border-default: #2a3b43;
-        --border-subtle: #1d2b32;
-        --border-hover: #42606a;
-        --accent-primary: #f2b84b;
-        --accent-warm: #f5f1e8;
-        --accent-glow: #ffd27a;
-        --status-success: #65d6a0;
+        --surface-0: #0A0C10;
+        --surface-1: #12151A;
+        --surface-2: #191D24;
+        --surface-3: #191D24;
+        --surface-4: #191D24;
+        --border-default: #33393F;
+        --border-subtle: #232830;
+        --border-hover: #F2A93B;
+        --accent-primary: #F2A93B;
+        --accent-warm: #C9862A;
+        --accent-glow: rgba(242, 169, 59, 0.5);
+        --status-success: #4ADE80;
         --status-error: #f28b82;
-        --text-primary: #f5f1e8;
-        --text-secondary: #d4d9d6;
-        --text-muted: #a8b3b1;
-        --text-dim: #7f918f;
+        --text-primary: #EDEBE4;
+        --text-secondary: #9AA0A8;
+        --text-muted: #5F656D;
+        --text-dim: #5F656D;
     }
+
     .light {
         color-scheme: light;
         --surface-0: #ffffff;
@@ -149,17 +151,17 @@ textarea {
 
 .landing-shell {
     width: 100%;
-    max-width: 1180px;
+    max-width: 1320px;
     margin-inline: auto;
-    padding-inline: clamp(1rem, 4vw, 2.5rem);
+    padding-inline: clamp(1.25rem, 4vw, 3rem);
 }
 
 .landing-nav,
 .landing-section,
 .landing-footer-inner {
-    max-width: 1180px;
+    max-width: 1320px;
     margin-inline: auto;
-    padding-inline: clamp(1rem, 4vw, 2.5rem);
+    padding-inline: clamp(1.25rem, 4vw, 3rem);
 }
 
 .landing-nav {
@@ -167,13 +169,13 @@ textarea {
 }
 
 .landing-hero {
-    min-height: min(720px, 78vh);
-    padding-bottom: 4rem;
-    padding-inline: clamp(1rem, 4vw, 2.5rem);
+    min-height: min(580px, 68vh);
+    padding-bottom: 2.5rem;
+    padding-inline: clamp(1.25rem, 4vw, 3rem);
 }
 
 .landing-hero-content {
-    max-width: 920px;
+    max-width: 1040px;
     padding-inline: 0.5rem;
 }
 
@@ -194,7 +196,14 @@ textarea {
 }
 
 .landing-section {
-    margin-top: clamp(4rem, 8vw, 6.5rem);
+    padding-top: 64px;
+    padding-bottom: 64px;
+}
+@media (min-width: 768px) {
+    .landing-section {
+        padding-top: 96px;
+        padding-bottom: 96px;
+    }
 }
 
 .landing-section-band {
@@ -213,7 +222,7 @@ textarea {
     z-index: 0;
 }
 
-.landing-section-band > * {
+.landing-section-band>* {
     position: relative;
     z-index: 1;
 }
@@ -325,18 +334,22 @@ textarea {
         padding-top: 1rem;
         padding-bottom: 1rem;
     }
+
     .landing-hero {
         min-height: auto;
         padding-top: 4.5rem;
         padding-bottom: 2rem;
     }
+
     .landing-title {
         max-width: 11ch;
         font-size: clamp(2.35rem, 11vw, 3.65rem);
     }
+
     .landing-section {
         margin-top: 3.5rem;
     }
+
     .landing-card {
         padding: 1.25rem;
     }
@@ -350,10 +363,12 @@ textarea {
         transform: scale(0.95);
         box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5);
     }
+
     50% {
         transform: scale(1.05);
         box-shadow: 0 0 0 6px rgba(74, 222, 128, 0);
     }
+
     100% {
         transform: scale(0.95);
         box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
@@ -361,11 +376,13 @@ textarea {
 }
 
 @keyframes subtle-glow {
+
     0%,
     100% {
         opacity: 0.15;
         transform: scale(1);
     }
+
     50% {
         opacity: 0.35;
         transform: scale(1.05);
@@ -373,13 +390,16 @@ textarea {
 }
 
 @keyframes float-slow {
+
     0%,
     100% {
         transform: translateY(0px) rotate(0deg);
     }
+
     25% {
         transform: translateY(-8px) rotate(1deg);
     }
+
     75% {
         transform: translateY(4px) rotate(-1deg);
     }
@@ -389,6 +409,7 @@ textarea {
     0% {
         transform: translateX(-100%);
     }
+
     100% {
         transform: translateX(100%);
     }
@@ -398,9 +419,11 @@ textarea {
     0% {
         background-position: 0% 50%;
     }
+
     50% {
         background-position: 100% 50%;
     }
+
     100% {
         background-position: 0% 50%;
     }
@@ -410,26 +433,31 @@ textarea {
     0% {
         transform: translateX(0);
     }
+
     100% {
         transform: translateX(-50%);
     }
 }
 
 @keyframes border-glow {
+
     0%,
     100% {
         opacity: 0.45;
     }
+
     50% {
         opacity: 1;
     }
 }
 
 @keyframes type-cursor {
+
     0%,
     100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0;
     }
@@ -504,12 +532,10 @@ textarea {
 /* Animated gradient text */
 
 .gradient-text {
-    background-image: linear-gradient(
-        115deg,
-        var(--accent-primary) 0%,
-        var(--accent-glow) 48%,
-        color-mix(in srgb, var(--accent-primary) 70%, var(--text-primary)) 100%
-    );
+    background-image: linear-gradient(115deg,
+            var(--accent-primary) 0%,
+            var(--accent-glow) 48%,
+            color-mix(in srgb, var(--accent-primary) 70%, var(--text-primary)) 100%);
     background-clip: text;
     -webkit-background-clip: text;
     color: transparent;
@@ -738,6 +764,7 @@ textarea {
 /* ─── Reduced Motion ─── */
 
 @media (prefers-reduced-motion: reduce) {
+
     *,
     *::before,
     *::after {

@@ -27,7 +27,7 @@ CHUNK_OVERLAP = 50
 RETRIEVAL_K = 5
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.environ.get("LLM_MODEL", "llama3.2:1b")
+LLM_MODEL = os.environ.get("LLM_MODEL", "llama3.2:3b")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
 _keep_alive = os.environ.get("MODEL_KEEP_ALIVE", "0")
 try:
@@ -142,6 +142,25 @@ async def ensure_rag_ready():
                 status_code=503,
                 detail=f"RAG pipeline unavailable (is Ollama running?). {exc}",
             )
+
+
+@app.post("/clear")
+async def clear_db():
+    global vectorstore
+    await ensure_rag_ready()
+    try:
+        if vectorstore:
+            vectorstore.delete_collection()
+            await asyncio.to_thread(init_rag_pipeline)
+            
+        for filename in os.listdir(DATA_DIR):
+            file_path = os.path.join(DATA_DIR, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+                
+        return {"status": "cleared"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/health")
