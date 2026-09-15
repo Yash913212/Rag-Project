@@ -27,7 +27,7 @@ vectorstore = Chroma.from_documents(
 retriever = vectorstore.as_retriever()
 
 # 4. Connect to local Llama 3.2 model
-llm = Ollama(model="llama3.2:3b")
+llm = Ollama(model="gpt-oss:20b-cloud")
 
 # 5. Build strict context prompt
 system_prompt = (

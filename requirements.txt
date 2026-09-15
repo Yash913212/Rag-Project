@@ -9,3 +9,7 @@ langchain-text-splitters
 chromadb
 langchain-ollama
 langchain-chroma
+langchain-classic
+numpy
+scikit-learn
+ddgs

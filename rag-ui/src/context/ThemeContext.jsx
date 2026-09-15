@@ -1,27 +1,38 @@
-import { useEffect, useState } from 'react';
-import { ThemeContext } from './theme';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+
+const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('theme');
-    return saved || 'dark';
+  const [themeMode, setThemeMode] = useState(() => {
+    return localStorage.getItem('themeMode') || 'dark';
+  });
+
+  const [accent, setAccent] = useState(() => {
+    return localStorage.getItem('themeAccent') || 'brass';
   });
 
   useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.add('theme-anim');
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+    localStorage.setItem('themeMode', themeMode);
+    document.documentElement.setAttribute('data-theme', themeMode);
+  }, [themeMode]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
+  useEffect(() => {
+    localStorage.setItem('themeAccent', accent);
+    // Apply the selected accent as a CSS variable on the root
+    document.documentElement.style.setProperty('--theme-accent', `var(--accent-${accent})`);
+  }, [accent]);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ themeMode, setThemeMode, accent, setAccent }}>
       {children}
     </ThemeContext.Provider>
   );
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
 }

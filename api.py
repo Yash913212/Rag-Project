@@ -4,11 +4,18 @@ import os
 import re
 import urllib.request
 from contextlib import asynccontextmanager
+import base64
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from huggingface_hub import InferenceClient
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -16,7 +23,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.documents import Document
+from ddgs import DDGS
 
 DATA_DIR = os.environ.get("DATA_DIR", "./data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -27,7 +36,7 @@ CHUNK_OVERLAP = 50
 RETRIEVAL_K = 5
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.environ.get("LLM_MODEL", "llama3.2:3b")
+LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-oss:20b-cloud")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
 _keep_alive = os.environ.get("MODEL_KEEP_ALIVE", "0")
 try:
@@ -80,13 +89,16 @@ def init_rag_pipeline():
     )
     system_prompt = (
         "You are an assistant for question-answering tasks. "
-        "Use the following pieces of retrieved context to answer the question. "
+        "Use the following pieces of retrieved context (which may include local document excerpts and external web search results) to provide the best and optimal answer. "
+        "Format your response beautifully using markdown, but adapt the structure (e.g., paragraphs, bullet points, numbered lists) to best suit the answer. ONLY use tables if the data is naturally tabular or comparative. "
+        "Include relevant emojis to make it visually appealing. "
         "If you don't know the answer, say that you don't know.\n\n"
-        "{context}"
+        "Context:\n{context}"
     )
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
+        MessagesPlaceholder(variable_name="history"),
         ("human", "{input}"),
     ])
 
@@ -180,8 +192,14 @@ async def health():
     }
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
     query: str
+    document: Optional[str] = None
+    history: Optional[List[ChatMessage]] = None
 
 
 @app.post("/chat")
@@ -190,11 +208,40 @@ async def chat(request: ChatRequest):
     await ensure_rag_ready()
 
     # ── Step 1: Retrieval (loads embedding model into VRAM) ──
-    docs_with_scores = await asyncio.to_thread(
-        vectorstore.similarity_search_with_score, request.query, k=RETRIEVAL_K
+    search_kwargs = {"k": RETRIEVAL_K}
+    if request.document:
+        doc_path = os.path.join(DATA_DIR, secure_filename(request.document))
+        search_kwargs["filter"] = {"source": doc_path}
+        
+    async def fetch_web_search():
+        def _search():
+            try:
+                results = DDGS().text(request.query, max_results=3)
+                docs = []
+                for idx, r in enumerate(results):
+                    docs.append(Document(
+                        page_content=r.get('body', ''),
+                        metadata={"source": f"Web: {r.get('title')}", "page": -1}
+                    ))
+                return docs
+            except Exception as e:
+                print(f"Web search error: {e}")
+                return []
+        return await asyncio.to_thread(_search)
+
+    docs_task = asyncio.to_thread(
+        vectorstore.similarity_search_with_score, request.query, **search_kwargs
     )
+    web_task = fetch_web_search()
+    
+    docs_with_scores, web_docs = await asyncio.gather(docs_task, web_task)
+    
     context_docs = [doc for doc, _score in docs_with_scores]
+    context_docs.extend(web_docs)
+    
     score_map = {doc.page_content: score for doc, score in docs_with_scores}
+    for w_doc in web_docs:
+        score_map[w_doc.page_content] = 0.1
 
     # ── Step 2: Explicitly unload embedding model from VRAM ──
     await asyncio.to_thread(_unload_ollama_model, EMBEDDING_MODEL)
@@ -206,7 +253,7 @@ async def chat(request: ChatRequest):
         page = source_metadata.get("page", 0)
         source_name = source_metadata.get("source", "Unknown")
         filename = os.path.basename(source_name)
-        page_str = f"Page {page + 1} ({filename})"
+        page_str = f"Page {page + 1} ({filename})" if page >= 0 else source_name
 
         raw_score = score_map.get(doc.page_content, 0.5)
         confidence = max(0.0, min(1.0, 1.0 - raw_score))
@@ -222,10 +269,26 @@ async def chat(request: ChatRequest):
     async def generate_sse():
         yield sse({"type": "sources", "sources": sources})
 
-        async for chunk in qa_chain.astream({"input": request.query, "context": context_docs}):
+        history_tuples = []
+        if request.history:
+            for msg in request.history:
+                history_tuples.append((msg.role, msg.content))
+
+        full_answer = ""
+        async for chunk in qa_chain.astream({"input": request.query, "context": context_docs, "history": history_tuples}):
+            full_answer += chunk
             yield sse({"type": "content", "token": chunk})
 
-        yield sse({"type": "end"})
+        # Generate 3 follow-up suggestions
+        try:
+            suggestion_prompt = f"Based on the following conversation and answer, suggest 3 short follow-up questions the user could ask. Return ONLY a JSON array of strings.\n\nAnswer: {full_answer}\n\nQuestions:"
+            sug_result = await asyncio.to_thread(llm_instance.invoke, suggestion_prompt)
+            match = re.search(r'\[.*\]', sug_result, re.DOTALL)
+            suggestions = json.loads(match.group(0)) if match else ["Can you elaborate?", "What are the key takeaways?", "Tell me more."]
+        except Exception:
+            suggestions = ["Can you elaborate?", "What are the key takeaways?", "Tell me more."]
+
+        yield sse({"type": "end", "suggestions": suggestions})
 
     return StreamingResponse(generate_sse(), media_type="text/event-stream")
 
@@ -238,9 +301,8 @@ async def upload_file(file: UploadFile = File(...)):
     content_type = file.content_type or ""
     ext = os.path.splitext(filename)[1].lower()
 
-    if ext not in [".pdf", ".md"]:
-        raise HTTPException(status_code=400, detail="Only PDF and MD files are supported.")
-
+    if ext not in [".pdf", ".md", ".txt", ".csv", ".jpg", ".jpeg", ".png", ".webp"]:
+        raise HTTPException(status_code=400, detail="Unsupported file format.")
     file_path = os.path.join(DATA_DIR, filename)
 
     async def upload_stream():
@@ -261,15 +323,53 @@ async def upload_file(file: UploadFile = File(...)):
 
             yield sse({"type": "progress", "phase": "upload", "percent": 25})
 
-            if ext == ".pdf":
-                loader = PyPDFLoader(file_path)
-            elif ext == ".md":
-                from langchain_community.document_loaders import TextLoader
-                loader = TextLoader(file_path, encoding='utf-8')
-            else:
-                raise HTTPException(status_code=400, detail="Unsupported file format.")
+            if ext in [".png", ".jpg", ".jpeg", ".webp"]:
+                import base64
+                import requests
                 
-            docs = await asyncio.to_thread(loader.load)
+                def describe_image(path):
+                    with open(path, "rb") as f:
+                        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+                    
+                    payload = {
+                        "model": "llama3.2-vision",
+                        "prompt": "You are a highly accurate OCR system. Meticulously extract ALL text from this image word-for-word, paying close attention to names, IDs, titles, and numbers. After extracting the exact text, provide a brief description of any visual elements or formatting.",
+                        "images": [img_b64],
+                        "stream": False
+                    }
+                    try:
+                        import requests
+                        res = requests.post("http://localhost:11434/api/generate", json=payload)
+                        return res.json().get("response", "Failed to generate description.")
+                    except Exception as e:
+                        print(f"Vision API error: {e}")
+                        return "Error describing image."
+                        
+                description = await asyncio.to_thread(describe_image, file_path)
+                if not description or description.startswith("Error"):
+                    raise HTTPException(status_code=500, detail="Failed to process image with vision model.")
+                    
+                docs = [Document(
+                    page_content=f"Image Description for {filename}:\n{description}",
+                    metadata={"source": file_path, "page": 0}
+                )]
+            else:
+                if ext == ".pdf":
+                    loader = PyPDFLoader(file_path)
+                elif ext in [".md", ".txt"]:
+                    from langchain_community.document_loaders import TextLoader
+                    loader = TextLoader(file_path, encoding='utf-8')
+                elif ext == ".csv":
+                    from langchain_community.document_loaders.csv_loader import CSVLoader
+                    loader = CSVLoader(file_path, encoding='utf-8')
+                else:
+                    try:
+                        from langchain_community.document_loaders import TextLoader
+                        loader = TextLoader(file_path, encoding='utf-8')
+                    except Exception:
+                        raise HTTPException(status_code=400, detail="Unsupported file format.")
+                    
+                docs = await asyncio.to_thread(loader.load)
 
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP
@@ -305,3 +405,192 @@ async def upload_file(file: UploadFile = File(...)):
             yield sse({"type": "error", "message": "Failed to process PDF."})
 
     return StreamingResponse(upload_stream(), media_type="text/event-stream")
+
+import datetime
+
+@app.get("/documents")
+async def list_documents():
+    await ensure_rag_ready()
+    # Get all documents from Chroma
+    try:
+        data = vectorstore.get()
+        metadatas = data["metadatas"]
+    except Exception as e:
+        print("Error getting documents:", e)
+        return []
+    
+    docs = {}
+    for meta in metadatas:
+        if not meta: continue
+        source = meta.get("source")
+        if not source: continue
+        
+        name = os.path.basename(source)
+        if name not in docs:
+            docs[name] = {
+                "name": name,
+                "chunks": 0,
+                "pages": set(),
+                "size": 0,
+                "type": "unknown",
+                "uploaded_at": None,
+                "source": source
+            }
+        
+        docs[name]["chunks"] += 1
+        page = meta.get("page")
+        if page is not None:
+            docs[name]["pages"].add(page)
+            
+    # Enrich with file stats
+    for name, info in docs.items():
+        info["pages"] = len(info["pages"])
+        file_path = os.path.join(DATA_DIR, name)
+        if os.path.exists(file_path):
+            stat = os.stat(file_path)
+            info["size"] = stat.st_size
+            info["uploaded_at"] = datetime.datetime.fromtimestamp(stat.st_mtime).isoformat()
+            info["type"] = os.path.splitext(name)[1].lower()
+            
+    return list(docs.values())
+
+@app.delete("/documents/{name}")
+async def delete_document(name: str):
+    await ensure_rag_ready()
+    file_path = os.path.join(DATA_DIR, secure_filename(name))
+    
+    # 1. Delete from Chroma
+    try:
+        data = vectorstore.get()
+        ids_to_delete = []
+        for i, meta in enumerate(data["metadatas"]):
+            if meta and meta.get("source", "").endswith(name):
+                ids_to_delete.append(data["ids"][i])
+        if ids_to_delete:
+            vectorstore.delete(ids_to_delete)
+    except Exception as e:
+        print("Error deleting from Chroma:", e)
+        
+    # 2. Delete file
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        
+    return {"status": "success", "deleted": name}
+
+@app.get("/files/{name}")
+async def get_file(name: str):
+    file_path = os.path.join(DATA_DIR, secure_filename(name))
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
+@app.get("/search")
+async def search_documents(q: str):
+    await ensure_rag_ready()
+    docs_with_scores = await asyncio.to_thread(
+        vectorstore.similarity_search_with_score, q, k=5
+    )
+    results = []
+    for doc, score in docs_with_scores:
+        meta = doc.metadata
+        results.append({
+            "text": doc.page_content,
+            "source": os.path.basename(meta.get("source", "")),
+            "page": meta.get("page", 0) + 1,
+            "score": max(0.0, min(1.0, 1.0 - score))
+        })
+    return results
+
+class QuizRequest(BaseModel):
+    document: str
+    count: int = 5
+    kind: str = "quiz" # or "flashcards"
+
+@app.post("/quiz")
+async def generate_quiz(request: QuizRequest):
+    await ensure_rag_ready()
+    data = vectorstore.get()
+    chunks = []
+    for i, meta in enumerate(data["metadatas"]):
+        if meta and meta.get("source", "").endswith(request.document):
+            chunks.append(data["documents"][i])
+            
+    if not chunks:
+        raise HTTPException(status_code=404, detail="Document chunks not found")
+        
+    import random
+    selected_chunks = random.sample(chunks, min(len(chunks), 10))
+    context_str = "\n---\n".join(selected_chunks)
+    
+    if request.kind == "quiz":
+        prompt = f"Based on the following document context, generate a multiple-choice quiz with {request.count} questions. Return ONLY a JSON array of objects. Each object must have 'question', 'options' (array of 4 strings), 'answer' (exact match to one option), 'explanation', and 'source' (brief excerpt). Do not include markdown formatting like ```json.\n\nContext:\n{context_str}"
+    else:
+        prompt = f"Based on the following document context, generate {request.count} flashcards. Return ONLY a JSON array of objects. Each object must have 'front' (concept or question), 'back' (definition or answer), and 'source' (brief excerpt). Do not include markdown formatting like ```json.\n\nContext:\n{context_str}"
+        
+    result = await asyncio.to_thread(llm_instance.invoke, prompt)
+    
+    try:
+        match = re.search(r'\[.*\]', result, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return json.loads(result)
+    except Exception as e:
+        print("Quiz parse error:", e, "\nResult:", result)
+        raise HTTPException(status_code=500, detail="Failed to parse LLM response")
+
+@app.get("/map")
+async def get_knowledge_map():
+    await ensure_rag_ready()
+    data = vectorstore.get(include=["embeddings", "metadatas", "documents"])
+    embeddings = data.get("embeddings")
+    if embeddings is None or len(embeddings) == 0:
+        return {"points": [], "clusters": []}
+        
+    import numpy as np
+    from sklearn.decomposition import PCA
+    from sklearn.cluster import KMeans
+    
+    X = np.array(embeddings)
+    
+    n_components = min(3, len(X))
+    if n_components < 3:
+        pca = PCA(n_components=n_components)
+        X_3d = pca.fit_transform(X)
+        if n_components < 3:
+            X_3d = np.pad(X_3d, ((0,0), (0, 3-n_components)))
+    else:
+        pca = PCA(n_components=3)
+        X_3d = pca.fit_transform(X)
+        
+    n_clusters = min(5, len(X))
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    labels = kmeans.fit_predict(X)
+    
+    async def fetch_cluster(i):
+        indices = np.where(labels == i)[0]
+        sample_docs = [data["documents"][idx] for idx in indices[:3]]
+        sample_text = "\n---\n".join(sample_docs)
+        prompt = f"Give a 2-4 word summarizing title for the following texts:\n\n{sample_text}\n\nTitle:"
+        title = await asyncio.to_thread(llm_instance.invoke, prompt)
+        return {
+            "id": int(i),
+            "label": title.strip().replace('"', ''),
+            "count": len(indices)
+        }
+        
+    tasks = [fetch_cluster(i) for i in range(n_clusters)]
+    clusters = await asyncio.gather(*tasks)
+        
+    points = []
+    for i, meta in enumerate(data["metadatas"]):
+        points.append({
+            "id": data["ids"][i],
+            "x": float(X_3d[i, 0]),
+            "y": float(X_3d[i, 1]),
+            "z": float(X_3d[i, 2]),
+            "cluster": int(labels[i]),
+            "source": os.path.basename(meta.get("source", "")),
+            "text": data["documents"][i]
+        })
+        
+    return {"points": points, "clusters": clusters}

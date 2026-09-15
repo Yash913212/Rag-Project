@@ -1,97 +1,88 @@
-# Ollama RAG
+# Local RAG System with Ollama & FastAPI
 
-This project is a Retrieval-Augmented Generation (RAG) system that uses local LLMs via Ollama, LangChain, and ChromaDB. It features a FastAPI backend for document processing and querying, and a modern React frontend (Vite) with a sleek user interface for interacting with your data.
+A complete, locally-hosted Retrieval-Augmented Generation (RAG) system that allows you to chat with your documents, visualize your knowledge base in 3D, and generate study materials. Built with privacy in mind, it uses local LLMs via Ollama so your data never leaves your machine.
 
-## Features
+## ✨ Key Features
 
-- **Local LLM Integration:** Uses Ollama for running open-source models like `llama3.2` and `nomic-embed-text` locally, ensuring privacy.
-- **Document Ingestion:** Supports uploading and parsing PDF documents via the FastAPI backend, storing them in a local Chroma vector database.
-- **RAG Pipeline:** Utilizes LangChain to split text, create embeddings, retrieve relevant context, and generate answers based on user queries.
-- **Modern UI:** Built with React, Vite, Tailwind CSS, Framer Motion, and Three.js for a highly interactive and visually appealing chat interface.
+- **Private & Local**: Powered by Ollama (`gpt-oss:20b-cloud` and `nomic-embed-text`). No external API calls.
+- **Interactive Chat UI**: Real-time streaming responses, source citations, and smart follow-up suggestions.
+- **Document Library**: Upload interface for PDFs and Markdown files with progress tracking. Manage and delete documents easily.
+- **3D Knowledge Map**: A Three.js powered interactive 3D scatter plot visualizing your document chunks using semantic embeddings, PCA, and K-Means clustering.
+- **Study Mode**: Interactive UI for automatically generating multiple-choice quizzes and flashcards based on document context.
+- **In-App Document Viewer**: Integrated PDF viewing utilizing `react-pdf` to view source documents directly within the app.
 
-## Prerequisites
+## 🛠️ Tech Stack
 
-- Python 3.8+
-- Node.js & npm
-- [Ollama](https://ollama.ai/) installed locally
-- Required Ollama models pulled:
-  ```bash
-  ollama pull llama3.2:3b
-  ollama pull nomic-embed-text
-  ```
+**Backend**
+- **Framework**: FastAPI & Uvicorn
+- **Orchestration**: LangChain (for pipelines, text splitting, and integration)
+- **Vector Database**: ChromaDB (local persistence)
+- **Data Processing**: Scikit-learn & Numpy (for PCA & Clustering)
 
-## Setup Instructions
+**Frontend**
+- **Framework**: React 19 & Vite
+- **Styling**: Tailwind CSS v4
+- **Animations**: Framer Motion
+- **3D Rendering**: Three.js, `@react-three/fiber`, and `@react-three/drei`
+- **PDF Rendering**: `react-pdf`
+- **Markdown parsing**: `react-markdown` & `remark-gfm`
+- **Routing**: React Router DOM (`react-router-dom`)
 
-### 1. Backend Setup (FastAPI)
+## 🚀 Getting Started
 
-1. Create a virtual environment (optional but recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
-   ```
+### Prerequisites
+1. Python 3.8+
+2. Node.js (v18+)
+3. [Ollama](https://ollama.ai/) installed and running on your machine.
 
-2. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Pull the required models:
+```bash
+ollama pull gpt-oss:20b-cloud
+ollama pull nomic-embed-text
+```
 
-3. Run the FastAPI server:
-   ```bash
-   uvicorn api:app --reload --host 0.0.0.0 --port 8000
-   ```
-   The backend will be available at `http://localhost:8000`.
+### 1. Backend Setup
+Open a terminal in the root directory:
 
-### 2. Frontend Setup (React / Vite)
+```bash
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-1. Navigate to the UI directory:
-   ```bash
-   cd rag-ui
-   ```
+# Install dependencies
+pip install -r requirements.txt
 
-2. Install npm dependencies:
-   ```bash
-   npm install
-   ```
+# Start the FastAPI server
+uvicorn api:app --reload --host 0.0.0.0 --port 8000
+```
+The backend API will run on `http://localhost:8000`.
 
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-   The frontend will be available at `http://localhost:5173`.
+### 2. Frontend Setup
+Open a new terminal in the `rag-ui` directory:
 
-## Project Structure
+```bash
+cd rag-ui
 
-- `api.py`: Main FastAPI application with `/upload` and `/chat` endpoints.
-- `local_rag.py`: A standalone script demonstrating a simple LangChain RAG pipeline using a webpage loader.
+# Install dependencies
+npm install --legacy-peer-deps
+
+# Start the dev server
+npm run dev
+```
+The frontend will be available at `http://localhost:5173`.
+
+## 📁 Project Structure
+
+### Root Directory
+- `api.py`: The core FastAPI application (handles `/chat`, `/upload`, `/documents`, `/quiz`, `/map`).
+- `local_rag.py`: A simple standalone LangChain CLI script example.
 - `requirements.txt`: Python dependencies.
-- `data/`: Directory where uploaded PDF documents are stored for ingestion.
-- `rag-ui/`: Frontend React application.
+- `chroma_db/`: Persistent local vector storage.
+- `data/`: Uploaded raw files.
 
-## Usage
-
-1. Open the frontend in your browser.
-2. Upload your PDF documents using the UI.
-3. Start asking questions! The system will retrieve relevant context from your uploaded documents and use the local LLM to generate an answer.
-
-## Roadmap
-
-**P0 - Must Fix (1 week)**
-- Persistence + incremental ingests + SSE streaming `OllamaLLM.stream()` -> `StreamingResponse` for token-by-token UX.
-- Env config + Docker Compose: ollama, fastapi, chroma services + Dockerfile for both ends.
-
-**P1 - High ROI Features**
-1. Multi-Format Ingest: PyPDF only. Add `UnstructuredFileLoader` for docx/txt/md/csv/html + OCR pytesseract for scanned PDFs.
-2. Hybrid Search + Reranking: `BM25Retriever` + Chroma ensemble + CrossEncoder (`ms-marco-MiniLM`) reranker. biggest accuracy win. `k=3` `api.py:52` too low -> `k=8` then rerank to 3.
-3. Chat Memory: Currently stateless. Pass `chat_history` to prompt. Use `create_history_aware_retriever`.
-4. Citations + PDF Viewer: Return `page_content` + `page` + `boundingBox` and highlight in viewer (react-pdf).
-5. Document Management: `GET /documents`, `DELETE`, `GET /health` (Ollama ping).
-6. Chunk Strategy Upgrade: `chunk_size=800-1000` with `RecursiveCharacterTextSplitter` + add `SemanticChunker` option.
-
-**P2 - Advanced / Differentiators**
-- Agentic RAG: Tool calling (Tavily web search fallback when confidence < 0.6), LangGraph agent for multi-step QA.
-- GraphRAG: Neo4j or NetworkX for entity linking — answers How are X and Y related?
-- Eval Harness: RAGAS (faithfulness, answer relevancy) + `GET /eval` dataset.
-- Auth + Multi-User: Supabase Auth + per-user collections `chroma_collection = f"user_{id}"`.
-- Observability: LangSmith tracing + logging + rate limit.
-- Export: Export chat to md/pdf + share link.
-- Voice: Whisper STT + TTS for voice chat.
+### Frontend Directory (`rag-ui/`)
+- `src/components/`: Reusable UI elements (Chat, PdfViewer, etc.)
+- `src/pages/`: Main application views (Chat, Library, Map, Study)
+- `src/context/`: React context providers (e.g., `RagContext` for global state)
+- `src/hooks/`: Custom React hooks (e.g., `useRAG`)
+- `src/lib/`: Utility functions and helpers
