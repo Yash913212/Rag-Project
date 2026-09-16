@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd rag-ui && npm run build",
+  "installCommand": "cd rag-ui && npm install --legacy-peer-deps",
+  "outputDirectory": "rag-ui/dist",
+  "framework": "vite"
+}
