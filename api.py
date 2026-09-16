@@ -17,8 +17,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from huggingface_hub import InferenceClient
-# pyrefly: ignore [missing-import]
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import SupabaseVectorStore
+from supabase import create_client, Client
 from langchain_classic.chains.combine_documents import \
     create_stuff_documents_chain
 from langchain_community.document_loaders import PyPDFLoader
@@ -39,12 +39,16 @@ RETRIEVAL_K = 5
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-oss:20b-cloud")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY", "")
+
 _keep_alive = os.environ.get("MODEL_KEEP_ALIVE", "0")
 try:
     MODEL_KEEP_ALIVE = int(_keep_alive)
 except ValueError:
     MODEL_KEEP_ALIVE = _keep_alive
 
+supabase_client: Client = None
 vectorstore = None
 qa_chain = None  # just the LLM answer chain (no retriever bundled)
 llm_instance = None  # kept for reference
@@ -73,15 +77,23 @@ def _unload_ollama_model(model_name: str) -> None:
 
 
 def init_rag_pipeline():
-    global vectorstore, qa_chain, llm_instance
-    print("Initializing RAG pipeline...")
+    global vectorstore, qa_chain, llm_instance, supabase_client
+    print("Initializing RAG pipeline (Supabase)...")
+
+    supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     embedding = OllamaEmbeddings(
         model=EMBEDDING_MODEL,
         base_url=OLLAMA_BASE_URL,
         keep_alive=0,  # always unload after use
     )
-    vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embedding)
+    
+    vectorstore = SupabaseVectorStore(
+        client=supabase_client,
+        embedding=embedding,
+        table_name="documents",
+        query_name="match_documents"
+    )
 
     llm_instance = OllamaLLM(
         model=LLM_MODEL,
@@ -164,12 +176,12 @@ async def ensure_rag_ready():
 
 @app.post("/clear")
 async def clear_db():
-    global vectorstore
+    global supabase_client
     await ensure_rag_ready()
     try:
-        if vectorstore:
-            vectorstore.delete_collection()
-            await asyncio.to_thread(init_rag_pipeline)
+        if supabase_client:
+            # Delete all records from documents table
+            supabase_client.table("documents").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
 
         for filename in os.listdir(DATA_DIR):
             file_path = os.path.join(DATA_DIR, filename)
@@ -533,12 +545,12 @@ import datetime
 @app.get("/documents")
 async def list_documents():
     await ensure_rag_ready()
-    # Get all documents from Chroma
+    # Get all documents from Supabase
     try:
-        data = vectorstore.get()
-        metadatas = data["metadatas"]
+        res = supabase_client.table("documents").select("metadata").execute()
+        metadatas = [r["metadata"] for r in res.data] if res.data else []
     except Exception as e:
-        print("Error getting documents:", e)
+        print("Error getting documents from Supabase:", e)
         return []
 
     docs = {}
@@ -586,17 +598,22 @@ async def delete_document(name: str):
     await ensure_rag_ready()
     file_path = os.path.join(DATA_DIR, secure_filename(name))
 
-    # 1. Delete from Chroma
+    # 1. Delete from Supabase
     try:
-        data = vectorstore.get()
-        ids_to_delete = []
-        for i, meta in enumerate(data["metadatas"]):
-            if meta and meta.get("source", "").endswith(name):
-                ids_to_delete.append(data["ids"][i])
-        if ids_to_delete:
-            vectorstore.delete(ids_to_delete)
+        res = supabase_client.table("documents").select("id, metadata").execute()
+        if res.data:
+            ids_to_delete = []
+            for row in res.data:
+                meta = row.get("metadata")
+                if meta and meta.get("source", "").endswith(name):
+                    ids_to_delete.append(row["id"])
+            
+            if ids_to_delete:
+                # Supabase Python client limits `in_` filter to arrays, but deleting individually is safer if many
+                for doc_id in ids_to_delete:
+                    supabase_client.table("documents").delete().eq("id", doc_id).execute()
     except Exception as e:
-        print("Error deleting from Chroma:", e)
+        print("Error deleting from Supabase:", e)
 
     # 2. Delete file
     if os.path.exists(file_path):

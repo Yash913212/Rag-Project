@@ -6,9 +6,8 @@ langchain
 langchain-community
 langchain-core
 langchain-text-splitters
-chromadb
+supabase
 langchain-ollama
-langchain-chroma
 langchain-classic
 numpy
 scikit-learn
