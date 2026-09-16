@@ -12,3 +12,4 @@ langchain-classic
 numpy
 scikit-learn
 ddgs
+huggingface_hub
