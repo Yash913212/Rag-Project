@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react';
-import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
-import { API_BASE } from '../config';
+import { useState, useEffect } from "react";
+import {
+  motion,
+  useMotionValue,
+  useTransform,
+  AnimatePresence,
+} from "framer-motion";
+import { API_BASE } from "../config";
 
 function Flashcard({ card, onSwipe }) {
   const [isFlipped, setIsFlipped] = useState(false);
@@ -10,10 +15,10 @@ function Flashcard({ card, onSwipe }) {
 
   const handleDragEnd = (e, info) => {
     if (info.offset.x > 100) {
-      onSwipe('right');
+      onSwipe("right");
       setIsFlipped(false);
     } else if (info.offset.x < -100) {
-      onSwipe('left');
+      onSwipe("left");
       setIsFlipped(false);
     }
   };
@@ -30,29 +35,53 @@ function Flashcard({ card, onSwipe }) {
         animate={{ rotateY: isFlipped ? 180 : 0 }}
         transition={{ type: "spring", stiffness: 260, damping: 20 }}
         className="w-full h-full relative preserve-3d"
-        style={{ transformStyle: 'preserve-3d' }}
+        style={{ transformStyle: "preserve-3d" }}
         onClick={() => setIsFlipped(!isFlipped)}
       >
         {/* Front */}
-        <div className="absolute inset-0 bg-parchment text-ink p-8 rounded-xl flex flex-col items-center justify-center text-center backface-hidden shadow-xl border border-brass/20">
-          <div className="font-ui-label text-fog uppercase tracking-widest text-xs mb-auto">Question</div>
+        <div className="absolute inset-0 bg-parchment text-ink p-6 sm:p-8 rounded-xl flex flex-col items-center justify-center text-center backface-hidden shadow-xl border border-brass/20">
+          <div className="font-ui-label text-fog uppercase tracking-widest text-xs mb-auto">
+            Question
+          </div>
           <div className="font-hero text-xl">{card.front}</div>
-          <div className="mt-auto font-data-mono text-fog text-[10px]">Tap to flip</div>
+          <div className="mt-auto font-data-mono text-fog text-[10px]">
+            Tap to flip
+          </div>
         </div>
 
         {/* Back */}
-        <div 
-          className="absolute inset-0 bg-indigo text-parchment p-8 rounded-xl flex flex-col items-center justify-center text-center backface-hidden shadow-xl border border-brass/20"
-          style={{ transform: 'rotateY(180deg)', backfaceVisibility: 'hidden' }}
+        <div
+          className="absolute inset-0 bg-indigo text-parchment p-6 sm:p-8 rounded-xl flex flex-col items-center justify-center text-center backface-hidden shadow-xl border border-brass/20"
+          style={{ transform: "rotateY(180deg)", backfaceVisibility: "hidden" }}
         >
-          <div className="font-ui-label text-brass uppercase tracking-widest text-xs mb-auto">Answer</div>
+          <div className="font-ui-label text-brass uppercase tracking-widest text-xs mb-auto">
+            Answer
+          </div>
           <div className="font-body overflow-y-auto w-full">{card.back}</div>
           {card.source && (
-            <div className="font-body text-xs text-fog/50 mt-4 line-clamp-2">"{card.source}"</div>
+            <div className="font-body text-xs text-fog/50 mt-4 line-clamp-2">
+              "{card.source}"
+            </div>
           )}
           <div className="mt-auto flex justify-between w-full font-data-mono text-fog text-[10px] pt-4">
-            <span>← Needs work</span>
-            <span>Got it →</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSwipe("left");
+              }}
+              className="hover:text-parchment transition-colors p-2 -ml-2"
+            >
+              ← Needs work
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSwipe("right");
+              }}
+              className="hover:text-parchment transition-colors p-2 -mr-2"
+            >
+              Got it →
+            </button>
           </div>
         </div>
       </motion.div>
@@ -97,7 +126,7 @@ function ProgressDial({ current, total }) {
 
 export function StudyMode() {
   const [documents, setDocuments] = useState([]);
-  const [selectedDoc, setSelectedDoc] = useState('');
+  const [selectedDoc, setSelectedDoc] = useState("");
   const [cards, setCards] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -117,6 +146,8 @@ export function StudyMode() {
       }
     };
     fetchDocs();
+    window.addEventListener("documentUpdated", fetchDocs);
+    return () => window.removeEventListener("documentUpdated", fetchDocs);
   }, []);
 
   const generateDeck = async () => {
@@ -124,9 +155,13 @@ export function StudyMode() {
     setIsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/quiz`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document: selectedDoc, count: 5, kind: 'flashcards' })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document: selectedDoc,
+          count: 5,
+          kind: "flashcards",
+        }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -143,46 +178,64 @@ export function StudyMode() {
   };
 
   const handleSwipe = (direction) => {
-    setCurrentIndex(prev => Math.min(prev + 1, cards.length));
+    setCurrentIndex((prev) => Math.min(prev + 1, cards.length));
   };
 
   if (!isStudying) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8 max-w-lg mx-auto">
-        <h1 className="font-hero text-4xl text-brass mb-4 text-center">Study Mode</h1>
-        <p className="font-body text-fog mb-12 text-center">Generate a flashcard deck directly from the semantic embeddings of any local document.</p>
-        
-        <div className="w-full bg-indigo/30 p-6 rounded-xl border border-fog/20 flex flex-col gap-4">
-          <label className="font-ui-label text-parchment uppercase tracking-widest text-xs">Target Document</label>
-          <select 
-            value={selectedDoc} 
+      <div className="h-full flex flex-col p-4 sm:p-8">
+        <header className="mb-8 sm:mb-12">
+          <h1 className="font-hero text-4xl text-brass mb-2">
+            Study Mode
+          </h1>
+          <p className="font-body text-fog text-sm sm:text-base max-w-xl">
+            Generate smart flashcards directly from the semantic concepts within your documents. Perfect for active recall and rapid learning.
+          </p>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center pb-32">
+          <div className="w-full max-w-md bg-indigo/30 p-6 rounded-xl border border-fog/20 flex flex-col gap-4">
+          <label className="font-ui-label text-parchment uppercase tracking-widest text-xs">
+            Target Document
+          </label>
+          <select
+            value={selectedDoc}
             onChange={(e) => setSelectedDoc(e.target.value)}
             className="w-full bg-ink border border-fog/20 rounded-lg p-3 font-body text-parchment focus:outline-none focus:border-brass"
           >
-            {documents.length === 0 && <option value="">No documents available</option>}
-            {documents.map(d => (
-              <option key={d.name} value={d.name}>{d.name}</option>
+            {documents.length === 0 && (
+              <option value="">No documents available</option>
+            )}
+            {documents.map((d) => (
+              <option key={d.name} value={d.name}>
+                {d.name}
+              </option>
             ))}
           </select>
-          
+
           <button
             onClick={generateDeck}
             disabled={!selectedDoc || isLoading}
             className="w-full mt-4 py-3 bg-brass text-ink rounded-lg font-ui-label hover:bg-parchment transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {isLoading ? <span className="animate-pulse">Generating deck...</span> : 'Generate Deck'}
+            {isLoading ? (
+              <span className="animate-pulse">Generating deck...</span>
+            ) : (
+              "Generate Deck"
+            )}
           </button>
+        </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col p-8">
-      <header className="mb-12 flex justify-between items-center">
+    <div className="h-full flex flex-col p-4 sm:p-8">
+      <header className="mb-8 sm:mb-12 flex flex-col sm:flex-row justify-between sm:items-end gap-4">
         <div>
           <h1 className="font-hero text-4xl text-brass mb-2">Study Mode</h1>
-          <p className="font-body text-fog">Reviewing: {selectedDoc}</p>
+          <p className="font-body text-fog text-sm sm:text-base">Reviewing: {selectedDoc}</p>
         </div>
         <ProgressDial current={currentIndex} total={cards.length} />
       </header>
@@ -206,9 +259,13 @@ export function StudyMode() {
               animate={{ opacity: 1 }}
               className="text-center"
             >
-              <div className="font-hero text-3xl text-brass mb-4">Deck complete</div>
-              <p className="font-body text-fog mb-8">You've reviewed all cards in this session.</p>
-              <button 
+              <div className="font-hero text-3xl text-brass mb-4">
+                Deck complete
+              </div>
+              <p className="font-body text-fog mb-8">
+                You've reviewed all cards in this session.
+              </p>
+              <button
                 onClick={() => setIsStudying(false)}
                 className="px-6 py-3 bg-indigo text-parchment rounded-lg font-ui-label hover:bg-brass hover:text-ink transition-colors"
               >

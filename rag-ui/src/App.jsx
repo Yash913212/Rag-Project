@@ -1,54 +1,62 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Rail } from './components/Rail';
-import { Landing } from './pages/Landing';
-import { Chat } from './pages/Chat';
-import { Library } from './pages/Library';
-import { KnowledgeMap } from './pages/KnowledgeMap';
-import { StudyMode } from './pages/StudyMode';
-import { Inspector } from './components/Inspector';
-import { UIProvider, useUI } from './context/UIContext';
+import { BrowserRouter } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Rail } from "./components/Rail";
+import { Landing } from "./pages/Landing";
+import { Chat } from "./pages/Chat";
+import { Library } from "./pages/Library";
+import { KnowledgeMap } from "./pages/KnowledgeMap";
+import { StudyMode } from "./pages/StudyMode";
+import { Inspector } from "./components/Inspector";
+import { UIProvider, useUI } from "./context/UIContext";
+import { Toaster } from "react-hot-toast";
 
 function AppContent() {
-  const location = useLocation();
   const { inspectorOpen, inspectorContent, closeInspector } = useUI();
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   return (
-    <div className="flex h-screen bg-ink text-parchment overflow-hidden">
+    <div className="flex flex-col-reverse sm:flex-row h-[100dvh] bg-ink text-parchment overflow-hidden">
       <Rail />
-      
-      <main className="flex-1 relative overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-            animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-            className="h-full w-full absolute inset-0 overflow-auto"
-          >
-            <Routes location={location}>
-              <Route path="/" element={<Landing />} />
-              <Route path="/chat" element={<Chat />} />
-              <Route path="/library" element={<Library />} />
-              <Route path="/map" element={<KnowledgeMap />} />
-              <Route path="/study" element={<StudyMode />} />
-            </Routes>
-          </motion.div>
-        </AnimatePresence>
+
+      <main className="flex-1 relative overflow-y-auto overflow-x-hidden scroll-smooth snap-y snap-mandatory">
+        <section id="home" className="h-full w-full snap-start relative shrink-0">
+          <Landing />
+        </section>
+        <section id="chat" className="h-full w-full snap-start relative shrink-0 border-t border-fog/10">
+          <Chat />
+        </section>
+        <section id="library" className="h-full w-full snap-start relative shrink-0 border-t border-fog/10">
+          <Library />
+        </section>
+        <section id="map" className="h-full w-full snap-start relative shrink-0 border-t border-fog/10">
+          <KnowledgeMap />
+        </section>
+        <section id="study" className="h-full w-full snap-start relative shrink-0 border-t border-fog/10">
+          <StudyMode />
+        </section>
       </main>
 
-      <Inspector 
-        isOpen={inspectorOpen} 
-        onClose={closeInspector} 
-        content={inspectorContent} 
+      <Inspector
+        isOpen={inspectorOpen}
+        onClose={closeInspector}
+        content={inspectorContent}
+      />
+      <Toaster 
+        position="top-center"
+        toastOptions={{
+          style: {
+            background: 'var(--color-indigo)',
+            color: 'var(--color-parchment)',
+            border: '1px solid rgba(192, 138, 62, 0.2)', // brass/20
+            fontFamily: 'var(--font-ui)',
+            fontSize: '14px'
+          },
+        }}
       />
     </div>
   );
 }
 
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider } from "./context/ThemeContext";
 
 function App() {
   return (

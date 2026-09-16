@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState } from "react";
 
 const UIContext = createContext();
 
@@ -16,7 +16,9 @@ export function UIProvider({ children }) {
   };
 
   return (
-    <UIContext.Provider value={{ inspectorOpen, inspectorContent, openInspector, closeInspector }}>
+    <UIContext.Provider
+      value={{ inspectorOpen, inspectorContent, openInspector, closeInspector }}
+    >
       {children}
     </UIContext.Provider>
   );
