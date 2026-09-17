@@ -2,7 +2,7 @@
 
 A complete, premium-grade Retrieval-Augmented Generation (RAG) system that allows you to chat with your documents, visualize your knowledge base in stunning 3D, and generate study materials. 
 
-This project integrates powerful local LLMs (via Ollama) and Cloud Vision models (via Hugging Face) to process both text and images flawlessly, all wrapped in a stunning, highly polished web interface.
+This project integrates powerful cloud LLMs (Groq & OpenRouter) and cloud embedding/vision models (Hugging Face) with a robust Supabase vector database, all wrapped in a stunning, highly polished web interface.
 
 ## ✨ Key Features
 
@@ -15,16 +15,17 @@ This project integrates powerful local LLMs (via Ollama) and Cloud Vision models
 
 ## 🛠️ Tech Stack
 
-**Backend**
-- **Framework**: FastAPI & Uvicorn
+**Backend (Cloud AI & Vector DB)**
+- **Framework**: FastAPI & Uvicorn (Hosted on **Render**)
 - **Orchestration**: LangChain (Pipelines, Chunking, Integration)
-- **Local LLM & Embeddings**: Ollama (`gpt-oss:20b-cloud`, `nomic-embed-text`)
-- **Cloud Vision**: Hugging Face Inference API
-- **Vector Database**: ChromaDB
+- **Primary LLM**: **Groq** (`llama-3.1-70b-versatile` for ultra-fast inference)
+- **Fallback LLM**: **OpenRouter** (`openai/gpt-4o-mini` for high-availability)
+- **Embeddings & Vision**: **Hugging Face** Inference API (`all-mpnet-base-v2`, `Qwen2.5-VL-3B-Instruct`)
+- **Vector Database**: **Supabase** (PostgreSQL with `pgvector`)
 - **Data Processing**: Scikit-learn & Numpy (PCA & Clustering)
 
 **Frontend**
-- **Framework**: React 19 & Vite
+- **Framework**: React 19 & Vite (Hosted on **Vercel**)
 - **Styling**: Tailwind CSS v4
 - **Animations & Effects**: Framer Motion, `@react-three/postprocessing`
 - **3D Rendering**: Three.js, `@react-three/fiber`, and `@react-three/drei`
@@ -37,37 +38,38 @@ This project integrates powerful local LLMs (via Ollama) and Cloud Vision models
 
 1. Python 3.8+
 2. Node.js (v18+)
-3. [Ollama](https://ollama.ai/) installed and running on your machine.
-4. A Hugging Face account and API Token.
+3. API Keys for **Groq**, **OpenRouter**, **Hugging Face**, and **Supabase**.
 
-**Pull the required Ollama models:**
-```bash
-ollama pull gpt-oss:20b-cloud
-ollama pull nomic-embed-text
+### 1. Environment Setup
+
+Create a `.env` file in the root of your project directory and add your keys:
+
+```env
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=your-supabase-service-key
+GROQ_API_KEY=your-groq-api-key
+OPENROUTER_API_KEY=your-openrouter-api-key
+HF_TOKEN=your-huggingface-token
 ```
 
-### 1. Backend Setup
+### 2. Backend Setup
 
 Open a terminal in the root directory:
 
 ```bash
 # Create and activate a virtual environment
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
-
-# Set up your environment variables
-# Create a .env file in the root and add your Hugging Face Token:
-# HF_TOKEN=your_huggingface_token_here
+pip3 install -r requirements.txt
 
 # Start the FastAPI server
 uvicorn api:app --reload --host 0.0.0.0 --port 8000
 ```
 The backend API will run on `http://localhost:8000`.
 
-### 2. Frontend Setup
+### 3. Frontend Setup
 
 Open a new terminal in the `rag-ui` directory:
 
@@ -83,13 +85,17 @@ npm run dev
 ```
 The frontend will be available at `http://localhost:5173`.
 
+## 🌍 Cloud Deployment
+
+- **Frontend**: The `rag-ui` folder is configured for seamless deployment on **Vercel**. Just import your GitHub repository and set the Root Directory to `rag-ui`.
+- **Backend**: The root folder containing `api.py` is configured for **Render**. Ensure you add the environment variables from your `.env` file to your Render dashboard!
+
 ## 📁 Project Structure
 
 ### Root Directory
 - `api.py`: The core FastAPI application (handles `/chat`, `/upload`, `/documents`, `/quiz`, `/map`).
 - `requirements.txt`: Python dependencies.
-- `chroma_db/`: Persistent local vector storage.
-- `data/`: Uploaded raw files.
+- `data/`: Uploaded raw files temporarily stored before processing.
 
 ### Frontend Directory (`rag-ui/`)
 - `src/components/`: Reusable UI elements (Rail, ThemeSettings, etc.)
