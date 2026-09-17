@@ -80,6 +80,9 @@ def init_rag_pipeline():
     global vectorstore, qa_chain, llm_instance, supabase_client
     print("Initializing RAG pipeline (Supabase)...")
 
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise ValueError("SUPABASE_URL and SUPABASE_SECRET_KEY environment variables are missing.")
+
     supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     embedding = OllamaEmbeddings(
