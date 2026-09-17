@@ -24,7 +24,9 @@ from langchain_classic.chains.combine_documents import \
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_ollama import OllamaEmbeddings, OllamaLLM
+from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pydantic import BaseModel
 
@@ -36,11 +38,11 @@ CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 RETRIEVAL_K = 5
 
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-oss:20b-cloud")
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 _keep_alive = os.environ.get("MODEL_KEEP_ALIVE", "0")
 try:
@@ -55,25 +57,6 @@ llm_instance = None  # kept for reference
 upload_lock = asyncio.Lock()
 
 
-def _unload_ollama_model(model_name: str) -> None:
-    """Ask Ollama to immediately unload a model from VRAM (keep_alive=0)."""
-    try:
-        payload = json.dumps(
-            {
-                "model": model_name,
-                "keep_alive": 0,
-            }
-        ).encode()
-        req = urllib.request.Request(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            resp.read()  # drain
-    except Exception as exc:
-        print(f"Warning: failed to unload {model_name}: {exc}")
 
 
 def init_rag_pipeline():
@@ -85,10 +68,9 @@ def init_rag_pipeline():
 
     supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    embedding = OllamaEmbeddings(
-        model=EMBEDDING_MODEL,
-        base_url=OLLAMA_BASE_URL,
-        keep_alive=0,  # always unload after use
+    embedding = HuggingFaceEndpointEmbeddings(
+        huggingfacehub_api_token=HF_TOKEN,
+        model="sentence-transformers/all-mpnet-base-v2"
     )
     
     vectorstore = SupabaseVectorStore(
@@ -98,13 +80,16 @@ def init_rag_pipeline():
         query_name="match_documents"
     )
 
-    llm_instance = OllamaLLM(
-        model=LLM_MODEL,
-        base_url=OLLAMA_BASE_URL,
-        keep_alive=0,  # always unload after use
-        num_ctx=2048,
-        num_gpu=0,  # run LLM on CPU to avoid VRAM OOM on 4GB GPU
+    primary_llm = ChatGroq(
+        model="llama-3.1-70b-versatile",
+        api_key=GROQ_API_KEY
     )
+    fallback_llm = ChatOpenAI(
+        model="openai/gpt-4o-mini",
+        api_key=OPENROUTER_API_KEY,
+        base_url="https://openrouter.ai/api/v1"
+    )
+    llm_instance = primary_llm.with_fallbacks([fallback_llm])
     system_prompt = (
         "You are an AI assistant designed for advanced question-answering. "
         "Use the retrieved context to provide the most accurate and optimal answer. "
@@ -198,18 +183,9 @@ async def clear_db():
 
 @app.get("/health")
 async def health():
-    ollama_ok = False
-    try:
-        with urllib.request.urlopen(f"{OLLAMA_BASE_URL}/api/tags", timeout=2) as resp:
-            ollama_ok = resp.status == 200
-    except Exception:
-        ollama_ok = False
-
     return {
         "status": "ok" if qa_chain is not None else "degraded",
         "rag_initialized": qa_chain is not None,
-        "ollama": ollama_ok,
-        "model": LLM_MODEL,
     }
 
 
@@ -255,7 +231,7 @@ async def chat(request: ChatRequest):
         return await asyncio.to_thread(_search)
 
     docs_task = asyncio.to_thread(
-        vectorstore.similarity_search_with_score, request.query, **search_kwargs
+        vectorstore.similarity_search_with_relevance_scores, request.query, **search_kwargs
     )
     web_task = fetch_web_search()
 
@@ -266,10 +242,7 @@ async def chat(request: ChatRequest):
 
     score_map = {doc.page_content: score for doc, score in docs_with_scores}
     for w_doc in web_docs:
-        score_map[w_doc.page_content] = 0.1
-
-    # ── Step 2: Explicitly unload embedding model from VRAM ──
-    await asyncio.to_thread(_unload_ollama_model, EMBEDDING_MODEL)
+        score_map[w_doc.page_content] = 0.9
 
     # Build source metadata for SSE
     sources = []
@@ -281,7 +254,7 @@ async def chat(request: ChatRequest):
         page_str = f"Page {page + 1} ({filename})" if page >= 0 else source_name
 
         raw_score = score_map.get(doc.page_content, 0.5)
-        confidence = max(0.0, min(1.0, 1.0 - raw_score))
+        confidence = max(0.0, min(1.0, raw_score))
 
         sources.append(
             {
@@ -516,8 +489,10 @@ async def upload_file(file: UploadFile = File(...)):
             batch_size = 5
             for i in range(0, total, batch_size):
                 batch = splits[i : i + batch_size]
+                import uuid
+                ids = [str(uuid.uuid4()) for _ in batch]
                 async with upload_lock:
-                    await asyncio.to_thread(vectorstore.add_documents, batch)
+                    await asyncio.to_thread(vectorstore.add_documents, batch, ids=ids)
                 percent = 25 + int(75 * (i + len(batch)) / total)
                 yield sse(
                     {
@@ -662,11 +637,12 @@ class QuizRequest(BaseModel):
 @app.post("/quiz")
 async def generate_quiz(request: QuizRequest):
     await ensure_rag_ready()
-    data = vectorstore.get()
+    response = supabase_client.table("documents").select("content, metadata").execute()
     chunks = []
-    for i, meta in enumerate(data["metadatas"]):
+    for row in response.data:
+        meta = row.get("metadata", {})
         if meta and meta.get("source", "").endswith(request.document):
-            chunks.append(data["documents"][i])
+            chunks.append(row.get("content", ""))
 
     if not chunks:
         raise HTTPException(status_code=404, detail="Document chunks not found")
@@ -681,7 +657,8 @@ async def generate_quiz(request: QuizRequest):
     else:
         prompt = f"Based on the following document context, generate {request.count} flashcards. Return ONLY a JSON array of objects. Each object must have 'front' (concept or question), 'back' (definition or answer), and 'source' (brief excerpt). Do not include markdown formatting like ```json.\n\nContext:\n{context_str}"
 
-    result = await asyncio.to_thread(llm_instance.invoke, prompt)
+    result_obj = await asyncio.to_thread(llm_instance.invoke, prompt)
+    result = result_obj.content if hasattr(result_obj, "content") else str(result_obj)
 
     try:
         match = re.search(r"\[.*\]", result, re.DOTALL)
@@ -696,8 +673,20 @@ async def generate_quiz(request: QuizRequest):
 @app.get("/map")
 async def get_knowledge_map():
     await ensure_rag_ready()
-    data = vectorstore.get(include=["embeddings", "metadatas", "documents"])
-    embeddings = data.get("embeddings")
+    response = supabase_client.table("documents").select("id, content, metadata, embedding").execute()
+    data = {"embeddings": [], "metadatas": [], "documents": [], "ids": []}
+    import json
+    for row in response.data:
+        if row.get("embedding"):
+            emb = row["embedding"]
+            if isinstance(emb, str):
+                emb = json.loads(emb)
+            data["embeddings"].append(emb)
+            data["metadatas"].append(row.get("metadata", {}))
+            data["documents"].append(row.get("content", ""))
+            data["ids"].append(row.get("id"))
+            
+    embeddings = data["embeddings"]
     if embeddings is None or len(embeddings) == 0:
         return {"points": [], "clusters": []}
 
@@ -726,7 +715,8 @@ async def get_knowledge_map():
         sample_docs = [data["documents"][idx] for idx in indices[:3]]
         sample_text = "\n---\n".join(sample_docs)
         prompt = f"Give a 2-4 word summarizing title for the following texts:\n\n{sample_text}\n\nTitle:"
-        title = await asyncio.to_thread(llm_instance.invoke, prompt)
+        title_obj = await asyncio.to_thread(llm_instance.invoke, prompt)
+        title = title_obj.content if hasattr(title_obj, "content") else str(title_obj)
         return {
             "id": int(i),
             "label": title.strip().replace('"', ""),

@@ -7,7 +7,9 @@ langchain-community
 langchain-core
 langchain-text-splitters
 supabase
-langchain-ollama
+langchain-groq
+langchain-openai
+langchain-huggingface
 langchain-classic
 numpy
 scikit-learn
